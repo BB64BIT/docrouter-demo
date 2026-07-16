@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>DocRouter</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
+  .mono { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+</style>
+</head>
+<body class="bg-slate-950 text-slate-200 min-h-screen">
+
+<!-- TELEMETRIA: la prova che non è ChatGPT -->
+<header class="border-b border-slate-800 bg-slate-900/50 sticky top-0 z-10 backdrop-blur">
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center gap-8 text-sm">
+    <div class="font-semibold text-lg">DocRouter <span class="text-slate-500 text-xs font-normal">on-premise</span></div>
+    <div class="flex gap-6 mono text-xs ml-auto">
+      <div><span class="text-slate-500">GPU</span> <span id="t-gpu" class="text-emerald-400">—</span></div>
+      <div><span class="text-slate-500">VRAM</span> <span id="t-vram" class="text-emerald-400">—</span></div>
+      <div><span class="text-slate-500">UTIL</span> <span id="t-util" class="text-emerald-400">—</span></div>
+      <div><span class="text-slate-500">TEMP</span> <span id="t-temp" class="text-emerald-400">—</span></div>
+      <div><span class="text-slate-500">CODA</span> <span id="t-queue" class="text-emerald-400">—</span></div>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-7xl mx-auto px-6 py-6 space-y-6">
+
+  <!-- SELETTORE DOCUMENTI -->
+  <section>
+    <h2 class="text-xs uppercase tracking-wider text-slate-500 mb-3">Documenti sintetici</h2>
+    <div id="samples" class="grid grid-cols-2 md:grid-cols-5 gap-3"></div>
+  </section>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+    <!-- CAMPI -->
+    <section class="lg:col-span-2 bg-slate-900 rounded-lg border border-slate-800 p-5">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xs uppercase tracking-wider text-slate-500">Campi estratti</h2>
+        <span id="latency" class="mono text-xs text-slate-500"></span>
+      </div>
+      <div id="fields" class="space-y-2">
+        <p class="text-slate-600 text-sm">Seleziona un documento.</p>
+      </div>
+    </section>
+
+    <!-- VERDETTO -->
+    <section class="bg-slate-900 rounded-lg border border-slate-800 p-5">
+      <h2 class="text-xs uppercase tracking-wider text-slate-500 mb-4">Decisione</h2>
+      <div id="verdict"><p class="text-slate-600 text-sm">—</p></div>
+    </section>
+  </div>
+
+  <!-- SOTTO IL COFANO -->
+  <section class="bg-slate-900 rounded-lg border border-slate-800">
+    <button onclick="document.getElementById('cofano').classList.toggle('hidden')"
+            class="w-full px-5 py-3 text-left text-xs uppercase tracking-wider text-slate-500 hover:text-slate-300">
+      ▸ Sotto il cofano
+    </button>
+    <div id="cofano" class="hidden px-5 pb-5">
+      <pre id="cofano-body" class="mono text-xs text-slate-400 whitespace-pre-wrap overflow-x-auto"></pre>
+    </div>
+  </section>
+
+  <!-- STORICO -->
+  <section class="bg-slate-900 rounded-lg border border-slate-800 p-5">
+    <div class="flex items-center gap-3 mb-4 flex-wrap">
+      <h2 class="text-xs uppercase tracking-wider text-slate-500">Storico</h2>
+      <select id="f-routing" onchange="loadDocs()" class="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs">
+        <option value="">tutti gli esiti</option>
+        <option value="auto">auto</option>
+        <option value="review">review</option>
+        <option value="reject">reject</option>
+      </select>
+      <input id="f-q" oninput="loadDocs()" placeholder="cerca nel testo…"
+             class="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs w-48">
+      <label class="text-xs text-slate-400 flex items-center gap-1">
+        <input id="f-scartati" type="checkbox" onchange="loadDocs()"> solo con campi scartati
+      </label>
+      <span id="stats" class="mono text-xs text-slate-500 ml-auto"></span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-xs">
+        <thead class="text-slate-500 border-b border-slate-800">
+          <tr><th class="text-left py-2">id</th><th class="text-left">quando</th>
+              <th class="text-left">esito</th><th class="text-left">motivo</th><th class="text-right">ms</th></tr>
+        </thead>
+        <tbody id="docs"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+const BADGE = { auto:"bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+                review:"bg-amber-500/15 text-amber-400 border-amber-500/30",
+                reject:"bg-rose-500/15 text-rose-400 border-rose-500/30" };
+
+let SAMPLES = {};
+
+async function loadSamples() {
+  const r = await fetch("/api/samples"); SAMPLES = {};
+  const el = document.getElementById("samples"); el.innerHTML = "";
+  for (const s of await r.json()) {
+    SAMPLES[s.id] = s;
+    el.insertAdjacentHTML("beforeend", `
+      <button onclick="process('${s.id}')"
+        class="text-left p-3 rounded border border-slate-800 bg-slate-900 hover:border-slate-600 transition">
+        <div class="text-sm font-medium">${s.label}</div>
+        <div class="text-xs text-slate-500 mt-1">${s.desc}</div>
+      </button>`);
+  }
+}
+
+async function process(id) {
+  const s = SAMPLES[id];
+  document.getElementById("fields").innerHTML = '<p class="text-slate-500 text-sm animate-pulse">Elaborazione…</p>';
+  const r = await fetch("/api/process", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ testo: s.testo })
+  });
+  render(await r.json(), s);
+  loadDocs();
+}
+
+function render(doc, sample) {
+  document.getElementById("latency").textContent = doc.latency_ms + " ms";
+
+  // campi + barra di confidence
+  document.getElementById("fields").innerHTML = doc.fields.map(f => {
+    const pct = Math.round(f.confidence * 100);
+    const col = f.routing === "auto" ? "bg-emerald-500" : "bg-rose-500";
+    return `
+    <div class="border border-slate-800 rounded p-3">
+      <div class="flex items-baseline gap-3">
+        <span class="text-xs text-slate-500 w-52 shrink-0">${f.name}</span>
+        <span class="mono text-sm ${f.routing==='auto'?'text-slate-100':'text-rose-300'} flex-1">${f.value || "—"}</span>
+        <span class="mono text-xs text-slate-600" title="confidence dichiarata dal modello: NON usata per decidere">lp=${f.mean_logprob.toFixed(3)}</span>
+      </div>
+      <div class="mt-2 h-1 bg-slate-800 rounded overflow-hidden">
+        <div class="${col} h-full transition-all" style="width:${pct}%"></div>
+      </div>
+      <div class="text-xs mt-1.5 ${f.routing==='auto'?'text-slate-600':'text-rose-400'}">${f.reason}</div>
+    </div>`;
+  }).join("");
+
+  // verdetto
+  document.getElementById("verdict").innerHTML = `
+    <div class="inline-block px-3 py-1 rounded border text-sm font-medium mono ${BADGE[doc.routing]}">${doc.routing.toUpperCase()}</div>
+    <p class="text-sm text-slate-300 mt-3">${doc.reason}</p>
+    <dl class="mt-4 space-y-2 text-xs">
+      <div class="flex justify-between"><dt class="text-slate-500">coerenza aritmetica</dt>
+        <dd class="mono">${doc.coerenza_aritmetica === null ? "n/d" : doc.coerenza_aritmetica ? "✓" : "✗"}</dd></div>
+      <div class="flex justify-between"><dt class="text-slate-500">campi scartati</dt>
+        <dd class="mono">${doc.campi_scartati.length}/${doc.fields.length}</dd></div>
+      <div class="flex justify-between"><dt class="text-slate-500">latenza</dt>
+        <dd class="mono">${doc.latency_ms} ms</dd></div>
+    </dl>`;
+
+  // sotto il cofano
+  document.getElementById("cofano-body").textContent =
+`DOCUMENTO IN INGRESSO
+${sample.testo}
+
+RISPOSTA DEL MODELLO (JSON forzato da grammatica GBNF)
+${JSON.stringify(doc.by_name, null, 2)}
+
+VERIFICHE PER CAMPO
+${doc.fields.map(f =>
+`${f.name}
+  valore        ${f.value || "(vuoto)"}
+  C  validazione   ${f.is_valid ? "ok" : "FALLITA — " + f.validation_error}
+  grounding        ${f.grounding === null ? "n/a (campo derivato)" : f.grounding.toFixed(0) + "/100 (" + f.grounding_mode + ")"}
+  B  logprob       ${f.mean_logprob.toFixed(4)}  <- diagnostica, NON decide
+  confidence       ${f.confidence.toFixed(2)}
+  routing          ${f.routing}`).join("\n\n")}
+
+LOGICA
+  1. C fallisce        -> confidence 0, reject
+  2. grounding fallisce -> confidence 0, reject
+  3. altrimenti        -> auto (fuzzy: confidence = somiglianza/100)
+  4. il documento controlla imponibile + iva == totale (tolleranza 0,01)
+     se non torna: review, perche' non si sa QUALE campo mente
+
+  I logprob NON entrano in nessuna decisione: misurato che saturano
+  a 1.0 anche su input degradato (il modello copia, non genera).`;
+}
+
+async function loadDocs() {
+  const p = new URLSearchParams();
+  const r = document.getElementById("f-routing").value;
+  const q = document.getElementById("f-q").value;
+  if (r) p.set("routing", r);
+  if (q) p.set("q", q);
+  if (document.getElementById("f-scartati").checked) p.set("solo_scartati", "true");
+
+  const docs = await (await fetch("/api/documents?" + p)).json();
+  document.getElementById("docs").innerHTML = docs.map(d => `
+    <tr class="border-b border-slate-800/50 hover:bg-slate-800/30">
+      <td class="py-2 mono text-slate-500">${d.doc_id}</td>
+      <td class="text-slate-500">${d.created_at.replace("T"," ")}</td>
+      <td><span class="px-2 py-0.5 rounded border text-xs mono ${BADGE[d.routing]}">${d.routing}</span></td>
+      <td class="text-slate-400 max-w-md truncate">${d.reason}</td>
+      <td class="text-right mono text-slate-500">${d.latency_ms}</td>
+    </tr>`).join("") || '<tr><td colspan="5" class="py-4 text-slate-600">nessun documento</td></tr>';
+
+  const s = await (await fetch("/api/stats")).json();
+  document.getElementById("stats").textContent =
+    `${s.totale} doc · ${s.latenza_media_ms} ms medi · ` +
+    Object.entries(s.per_routing).map(([k,v]) => `${k}:${v}`).join(" ");
+}
+
+async function telemetry() {
+  try {
+    const t = await (await fetch("/api/telemetry")).json();
+    if (t.gpu && !t.gpu.error) {
+      document.getElementById("t-gpu").textContent  = t.gpu.name.replace("NVIDIA GeForce ","");
+      document.getElementById("t-vram").textContent = (t.gpu.vram_used_mb/1024).toFixed(1) + "/" + (t.gpu.vram_total_mb/1024).toFixed(0) + " GB";
+      document.getElementById("t-util").textContent = t.gpu.util_pct + "%";
+      document.getElementById("t-temp").textContent = t.gpu.temp_c + "°C";
+    }
+    const q = t.llama?.requests_processing;
+    document.getElementById("t-queue").textContent = q === undefined ? "—" : q;
+  } catch {}
+}
+
+loadSamples(); loadDocs(); telemetry();
+setInterval(telemetry, 1000);
+</script>
+</body>
+</html>
