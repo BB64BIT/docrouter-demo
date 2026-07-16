@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from src import db
 from src.llm.client import LlamaCppClient
 from src.pipeline import processa
-from src.documents import DOCUMENTI
+from src.samples import DOCUMENTI
 
 LLAMA_URL = "http://127.0.0.1:8080"   # stesso host: niente rete di mezzo
 
