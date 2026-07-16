@@ -2,6 +2,7 @@
 <html lang="it">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DocRouter</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
@@ -11,7 +12,7 @@
 </head>
 <body class="bg-slate-950 text-slate-200 min-h-screen">
 
-<!-- TELEMETRIA: la prova che non è ChatGPT -->
+<!-- TELEMETRIA: la prova che non e' ChatGPT -->
 <header class="border-b border-slate-800 bg-slate-900/50 sticky top-0 z-10 backdrop-blur">
   <div class="max-w-7xl mx-auto px-6 py-3 flex items-center gap-8 text-sm">
     <div class="font-semibold text-lg">DocRouter <span class="text-slate-500 text-xs font-normal">on-premise</span></div>
@@ -57,7 +58,7 @@
   <section class="bg-slate-900 rounded-lg border border-slate-800">
     <button onclick="document.getElementById('cofano').classList.toggle('hidden')"
             class="w-full px-5 py-3 text-left text-xs uppercase tracking-wider text-slate-500 hover:text-slate-300">
-      ▸ Sotto il cofano
+      &#9656; Sotto il cofano
     </button>
     <div id="cofano" class="hidden px-5 pb-5">
       <pre id="cofano-body" class="mono text-xs text-slate-400 whitespace-pre-wrap overflow-x-auto"></pre>
@@ -128,7 +129,7 @@ async function process(id) {
 function render(doc, sample) {
   document.getElementById("latency").textContent = doc.latency_ms + " ms";
 
-  // campi + barra di confidence
+  // --- campi + barra di confidence ---
   document.getElementById("fields").innerHTML = doc.fields.map(f => {
     const pct = Math.round(f.confidence * 100);
     const col = f.routing === "auto" ? "bg-emerald-500" : "bg-rose-500";
@@ -146,20 +147,24 @@ function render(doc, sample) {
     </div>`;
   }).join("");
 
-  // verdetto
+  // --- verdetto documento ---
   document.getElementById("verdict").innerHTML = `
     <div class="inline-block px-3 py-1 rounded border text-sm font-medium mono ${BADGE[doc.routing]}">${doc.routing.toUpperCase()}</div>
     <p class="text-sm text-slate-300 mt-3">${doc.reason}</p>
     <dl class="mt-4 space-y-2 text-xs">
       <div class="flex justify-between"><dt class="text-slate-500">coerenza aritmetica</dt>
-        <dd class="mono">${doc.coerenza_aritmetica === null ? "n/d" : doc.coerenza_aritmetica ? "✓" : "✗"}</dd></div>
+        <dd class="mono ${doc.coerenza_aritmetica === false ? 'text-amber-400' : ''}">${doc.coerenza_aritmetica === null ? "n/d" : doc.coerenza_aritmetica ? "&#10003;" : "&#10007;"}</dd></div>
       <div class="flex justify-between"><dt class="text-slate-500">campi scartati</dt>
         <dd class="mono">${doc.campi_scartati.length}/${doc.fields.length}</dd></div>
       <div class="flex justify-between"><dt class="text-slate-500">latenza</dt>
         <dd class="mono">${doc.latency_ms} ms</dd></div>
     </dl>`;
 
-  // sotto il cofano
+  // --- sotto il cofano ---
+  const incoerenza = doc.coerenza_aritmetica === false
+    ? `\n    ${doc.by_name.imponibile} + ${doc.by_name.iva} != ${doc.by_name.totale}`
+    : "";
+
   document.getElementById("cofano-body").textContent =
 `DOCUMENTO IN INGRESSO
 ${sample.testo}
@@ -170,19 +175,30 @@ ${JSON.stringify(doc.by_name, null, 2)}
 VERIFICHE PER CAMPO
 ${doc.fields.map(f =>
 `${f.name}
-  valore        ${f.value || "(vuoto)"}
+  valore           ${f.value || "(vuoto)"}
   C  validazione   ${f.is_valid ? "ok" : "FALLITA — " + f.validation_error}
   grounding        ${f.grounding === null ? "n/a (campo derivato)" : f.grounding.toFixed(0) + "/100 (" + f.grounding_mode + ")"}
   B  logprob       ${f.mean_logprob.toFixed(4)}  <- diagnostica, NON decide
   confidence       ${f.confidence.toFixed(2)}
   routing          ${f.routing}`).join("\n\n")}
 
+VERIFICHE DOCUMENTO
+  coerenza aritmetica  ${doc.coerenza_aritmetica === null ? "n/d (campi non parsabili)" : doc.coerenza_aritmetica ? "ok" : "FALLITA"}${incoerenza}
+  campi scartati       ${doc.campi_scartati.length ? doc.campi_scartati.join(", ") : "nessuno"}
+  ROUTING DOCUMENTO    ${doc.routing.toUpperCase()}
+  ${doc.reason}
+
 LOGICA
-  1. C fallisce        -> confidence 0, reject
-  2. grounding fallisce -> confidence 0, reject
-  3. altrimenti        -> auto (fuzzy: confidence = somiglianza/100)
-  4. il documento controlla imponibile + iva == totale (tolleranza 0,01)
-     se non torna: review, perche' non si sa QUALE campo mente
+  Per campo:
+    1. C fallisce         -> confidence 0, reject
+    2. grounding fallisce -> confidence 0, reject
+    3. altrimenti         -> auto (fuzzy: confidence = somiglianza/100)
+
+  Per documento:
+    4. un campo in reject -> reject
+    5. imponibile + iva != totale (tolleranza 0,01) -> REVIEW
+       i tre campi sono ognuno valido e ancorato, ma insieme mentono.
+       Non si sa QUALE: decide un umano.
 
   I logprob NON entrano in nessuna decisione: misurato che saturano
   a 1.0 anche su input degradato (il modello copia, non genera).`;
