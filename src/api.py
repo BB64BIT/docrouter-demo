@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from src import db
 from src.llm.client import LlamaCppClient
 from src.pipeline import processa
+from src.documents import DOCUMENTI
 
 LLAMA_URL = "http://127.0.0.1:8080"   # stesso host: niente rete di mezzo
 
@@ -36,6 +37,9 @@ def api_process(req: ProcessRequest) -> dict:
     db.salva(doc, latency_ms=latency)
     return {**doc.model_dump(), "latency_ms": latency}
 
+@app.get("/api/samples")
+def api_samples() -> list[dict]:
+    return [{"id": k, **{kk: vv for kk, vv in v.items()}} for k, v in DOCUMENTI.items()]
 
 @app.get("/api/documents")
 def api_documents(
