@@ -102,4 +102,15 @@ class ExtractedField(BaseModel):
 
         if self.grounding_mode == "fuzzy":
             return f"Verificato. Somiglianza {self.grounding:.0f}/100"
+        if self.grounding is None:
+            return "Campo derivato: grounding non applicabile, nessuna verifica di ancoraggio"
+
+        if self.grounding_mode == "fuzzy":
+            return f"Verificato. Somiglianza {self.grounding:.0f}/100"
         return "Verificato: valido e presente nel documento"
+        return "Verificato: valido e presente nel documento"
+    
+        def test_derived_dice_la_verita():
+            c = _campo(name="aliquota_iva", value="22", grounding=None, grounding_mode="derived")
+            assert "non applicabile" in c.reason
+            assert "presente nel documento" not in c.reason

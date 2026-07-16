@@ -5,6 +5,7 @@ import json
 import httpx
 
 from src.llm.client import LlamaCppClient
+from src.pipeline import processa
 
 POD_ID = "o6p1xv8192s8e0"
 BASE_URL = f"https://{POD_ID}-8080.proxy.runpod.net"
@@ -60,6 +61,16 @@ def test_ocr_sporco() -> None:
     for c in CAMPI:
         print(f"{c:28} = {valori[c]:24} logprob={logprobs[c]:.4f}")
 
+def test_pipeline_reale() -> None:
+    for nome, txt in [("PULITO", TESTO), ("OCR SPORCO", TESTO_SPORCO), ("SENZA P.IVA", TESTO_SENZA_PIVA)]:
+        doc = processa(txt, client)
+        print(f"\n--- {nome}: {doc.routing.upper()} ---")
+        print(f"{doc.reason}")
+        for f in doc.fields:
+            stato = "OK" if f.routing == "auto" else "NO"
+            print(f"  [{stato}] {f.name:26} = {f.value:24} conf={f.confidence:.2f} lp={f.mean_logprob:.3f}")
+            if f.routing != "auto":
+                print(f"       └─ {f.reason}")
 
 def test_allucinazione() -> None:
     """La P.IVA NON è sul documento. Se la inventa?"""
@@ -128,8 +139,13 @@ def diagnostica() -> None:
     else:
         print("!! completion_probabilities VUOTO — i logprob=1.0 sono un artefatto")
 
+
+
 if __name__ == "__main__":
-    test_temperatura()
+    test_pipeline_reale()
+
+#if __name__ == "__main__":
+ #   test_temperatura()
 
 #if __name__ == "__main__":
    # estrazione()
