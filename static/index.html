@@ -28,24 +28,34 @@
 
 <main class="max-w-7xl mx-auto px-6 py-6 space-y-6">
 
-  <!-- SELETTORE DOCUMENTI -->
-  <section>
-    <h2 class="text-xs uppercase tracking-wider text-slate-500 mb-3">Documenti sintetici</h2>
-    <div id="samples" class="grid grid-cols-2 md:grid-cols-5 gap-3"></div>
+  <!-- SELETTORE + EDITOR -->
+  <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div>
+      <h2 class="text-xs uppercase tracking-wider text-slate-500 mb-3">1. Parti da un documento</h2>
+      <div id="samples" class="grid grid-cols-1 gap-2"></div>
+    </div>
+
+    <div>
+      <div class="flex items-baseline justify-between mb-3">
+        <h2 class="text-xs uppercase tracking-wider text-slate-500">2. Modificalo e riprova</h2>
+        <span id="modificato" class="text-xs text-amber-400 hidden">modificato</span>
+      </div>
+      <textarea id="editor" spellcheck="false"
+        class="w-full h-56 bg-slate-900 border border-slate-800 rounded p-3 mono text-xs
+               text-slate-200 focus:border-slate-600 focus:outline-none resize-none"
+        placeholder="Seleziona un documento a sinistra, poi modificalo qui: cambia una cifra della P.IVA, altera il totale, cancella un campo..."
+        oninput="document.getElementById('modificato').classList.remove('hidden')"></textarea>
+      <div class="flex items-center gap-3 mt-2">
+        <button onclick="processEditor()"
+          class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-sm font-medium transition">
+          Processa
+        </button>
+        <p class="text-xs text-slate-600">
+          Documenti sintetici. <span class="text-amber-500/80">Non inserire dati aziendali reali.</span>
+        </p>
+      </div>
+    </div>
   </section>
-
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-    <!-- CAMPI -->
-    <section class="lg:col-span-2 bg-slate-900 rounded-lg border border-slate-800 p-5">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-xs uppercase tracking-wider text-slate-500">Campi estratti</h2>
-        <span id="latency" class="mono text-xs text-slate-500"></span>
-      </div>
-      <div id="fields" class="space-y-2">
-        <p class="text-slate-600 text-sm">Seleziona un documento.</p>
-      </div>
-    </section>
 
     <!-- VERDETTO -->
     <section class="bg-slate-900 rounded-lg border border-slate-800 p-5">
@@ -107,12 +117,31 @@ async function loadSamples() {
   for (const s of await r.json()) {
     SAMPLES[s.id] = s;
     el.insertAdjacentHTML("beforeend", `
-      <button onclick="process('${s.id}')"
+      <button onclick="carica('${s.id}')"
         class="text-left p-3 rounded border border-slate-800 bg-slate-900 hover:border-slate-600 transition">
         <div class="text-sm font-medium">${s.label}</div>
-        <div class="text-xs text-slate-500 mt-1">${s.desc}</div>
+        <div class="text-xs text-slate-500 mt-0.5">${s.desc}</div>
       </button>`);
   }
+}
+
+function carica(id) {
+  document.getElementById("editor").value = SAMPLES[id].testo;
+  document.getElementById("modificato").classList.add("hidden");
+  processEditor();
+}
+
+async function processEditor() {
+  const testo = document.getElementById("editor").value.trim();
+  if (!testo) return;
+  document.getElementById("fields").innerHTML =
+    '<p class="text-slate-500 text-sm animate-pulse">Elaborazione…</p>';
+  const r = await fetch("/api/process", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ testo })
+  });
+  render(await r.json(), { testo });
+  loadDocs();
 }
 
 async function process(id) {
