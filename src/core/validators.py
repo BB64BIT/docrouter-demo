@@ -124,3 +124,45 @@ def valida_data(value: str) -> tuple[bool, str | None]:
             continue  # questo formato no, prova il prossimo
 
     return False, f"data non parsabile: '{pulito}' (attesi: {', '.join(FORMATI_DATA)})"
+
+def parse_importo(value: str) -> Decimal | None:
+    """Estrae il Decimal da un importo italiano. None se non parsabile.
+
+    Duplica la normalizzazione di valida_importo: quella dice SE è valido,
+    questa restituisce QUANTO vale. Servono entrambe.
+    """
+    if not value or not value.strip():
+        return None
+
+    pulito = value.strip()
+    for simbolo in ["€", "EUR", "eur", " "]:
+        pulito = pulito.replace(simbolo, "")
+    pulito = pulito.replace(".", "").replace(",", ".")
+
+    try:
+        importo = Decimal(pulito)
+    except InvalidOperation:
+        return None
+
+    return importo if importo.is_finite() else None
+
+def parse_importo(value: str) -> Decimal | None:
+    """Estrae il Decimal da un importo italiano. None se non parsabile.
+
+    Duplica la normalizzazione di valida_importo: quella dice SE è valido,
+    questa restituisce QUANTO vale. Servono entrambe.
+    """
+    if not value or not value.strip():
+        return None
+
+    pulito = value.strip()
+    for simbolo in ["€", "EUR", "eur", " "]:
+        pulito = pulito.replace(simbolo, "")
+    pulito = pulito.replace(".", "").replace(",", ".")
+
+    try:
+        importo = Decimal(pulito)
+    except InvalidOperation:
+        return None
+
+    return importo if importo.is_finite() else None

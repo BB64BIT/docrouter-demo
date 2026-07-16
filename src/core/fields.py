@@ -17,12 +17,6 @@ from src.core.schema import GroundingMode
 
 RoutingDecision = Literal["auto", "review", "reject"]
 
-# Soglie sul logprob. Arbitrarie finché non calibrate su un test set:
-# vanno dette per quello che sono, non spacciate per scienza.
-SOGLIA_AUTO = 0.90
-SOGLIA_REVIEW = 0.70
-
-
 class ExtractedField(BaseModel):
     """Un campo, il suo valore, e tutte le prove raccolte su di esso."""
 
@@ -64,38 +58,37 @@ class ExtractedField(BaseModel):
     @computed_field
     @property
     def confidence(self) -> float:
-        """I due gate, poi il numero.
+        """Solo i gate. B è stato scartato: satura a 1.0 anche su spazzatura.
 
-        L'ordine dei return È la logica: ogni gate corto-circuita.
+        Misurato: OCR degradato ("OO743IIO157") → mean_logprob 1.0000
+        a temperatura 0 e 0.7. Il modello copia, non genera: non ha
+        incertezza da riportare.
         """
         if not self.is_valid:
-            return 0.0        # non è un valore valido. Il resto è irrilevante.
-
+            return 0.0
         if not self.is_grounded:
-            return 0.0        # non è sul documento. Il modello l'ha inventato.
+            return 0.0
 
-        return self.mean_logprob  # sopravvissuto ai gate: parla B.
+        # L'unica gradazione reale rimasta: il punteggio fuzzy.
+        if self.grounding_mode == "fuzzy" and self.grounding is not None:
+            return self.grounding / 100.0
+
+        return 1.0
 
     @computed_field
     @property
     def routing(self) -> RoutingDecision:
-        """auto = passa | review = umano | reject = scartato."""
+        """A livello campo il verdetto è binario. Il 'review' lo decide
+        il documento, che vede i campi insieme."""
         if not self.is_valid or not self.is_grounded:
             return "reject"
-        if self.mean_logprob >= SOGLIA_AUTO:
-            return "auto"
-        if self.mean_logprob >= SOGLIA_REVIEW:
-            return "review"
-        return "reject"
-
+        return "auto"
+    
+    
     @computed_field
     @property
     def reason(self) -> str:
-        """Il PERCHÉ, in italiano, per la dashboard.
-
-        Questo campo è metà della demo: quando il collega chiede
-        "perché l'ha scartato?", la risposta è già a schermo.
-        """
+        """Il PERCHÉ, in italiano, per la dashboard."""
         if not self.is_valid:
             return f"Validazione fallita: {self.validation_error}"
 
@@ -107,13 +100,6 @@ class ExtractedField(BaseModel):
                 f"< soglia {self.fuzzy_threshold:.0f}"
             )
 
-        if self.mean_logprob >= SOGLIA_AUTO:
-            return f"Verificato. Confidence modello {self.mean_logprob:.2f}"
-
-        if self.mean_logprob >= SOGLIA_REVIEW:
-            return (
-                f"Valido e ancorato, ma il modello era incerto "
-                f"({self.mean_logprob:.2f} < {SOGLIA_AUTO}). Verifica umana."
-            )
-
-        return f"Modello troppo incerto: {self.mean_logprob:.2f}"
+        if self.grounding_mode == "fuzzy":
+            return f"Verificato. Somiglianza {self.grounding:.0f}/100"
+        return "Verificato: valido e presente nel documento"

@@ -17,6 +17,7 @@ import httpx
 class LLMClient(Protocol):
     def extract(self, testo: str, campi: list[str]) -> tuple[dict[str, str], dict[str, float], str]:
         """Ritorna ({campo: valore}, {campo: mean_logprob}, raw_json)."""
+        
         ...
 
 
@@ -112,9 +113,16 @@ def _logprob_per_campo(
 class LlamaCppClient:
     """Client verso llama-server."""
 
-    def __init__(self, base_url: str, timeout: float = 120.0):
+    def __init__(self, base_url: str, timeout: float = 120.0, temperature: float = 0.0):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self.temperature = temperature
+
+
+    def __init__(self, base_url: str, timeout: float = 120.0, temperature: float = 0.0):
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+        self.temperature = temperature
 
     def extract(self, testo: str, campi: list[str]) -> tuple[dict[str, str], dict[str, float], str]:
         prompt = self._costruisci_prompt(testo, campi)
@@ -133,7 +141,7 @@ class LlamaCppClient:
         payload = {
             "prompt": prompt,
             "n_predict": 512,
-            "temperature": 0.0,
+            "temperature": self.temperature,
             "n_probs": 1,          # ci serve solo il token scelto
             "json_schema": schema,
             "cache_prompt": True,  # riusa il KV del prompt di sistema
@@ -181,7 +189,6 @@ class MockLLMClient:
     E ti permette di preparare il CASO DI FALLIMENTO da mostrare in demo,
     invece di sperare che il modello vero allucini a comando.
     """
-
     def __init__(self, risposte: dict[str, str], logprobs: dict[str, float] | None = None):
         self.risposte = risposte
         self.logprobs = logprobs or {k: 0.95 for k in risposte}
